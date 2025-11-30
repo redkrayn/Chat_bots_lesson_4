@@ -41,6 +41,8 @@ pip install -r requirements.txt
 
 `REDIS_DB` - Укажите бд, по дефолту 0
 
+`PATH_QUIZ_QUESTIONS` - Путь до папки с вопросами
+
 Запустите ботов:
 
 VK:
