@@ -34,7 +34,10 @@ def setup_logging(logger_name, tg_bot=None, chat_id=None):
 
 
 def get_quiz():
-    folder_path = 'quiz-questions'
+    env = Env()
+    env.read_env()
+
+    folder_path = env('PATH_QUIZ_QUESTIONS')
     all_files = os.listdir(folder_path)
     questions_dict = {}
     lenghtsss = 0
