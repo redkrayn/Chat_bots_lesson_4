@@ -3,7 +3,7 @@ import re
 import redis
 import logging
 
-from environs import Env
+from config import config
 
 
 class TelegramLogsHandler(logging.Handler):
@@ -33,14 +33,10 @@ def setup_logging(logger_name, tg_bot=None, chat_id=None):
     return logger
 
 
-def get_quiz():
-    env = Env()
-    env.read_env()
-
-    folder_path = env('PATH_QUIZ_QUESTIONS')
+def parse_quiz_questions():
+    folder_path = config.path_quiz_question
     all_files = os.listdir(folder_path)
     questions_dict = {}
-    lenghtsss = 0
 
     for filename in all_files:
         file_path = os.path.join(folder_path, filename)
@@ -62,28 +58,17 @@ def get_quiz():
                     clean_answer = clean_answer.replace(symbol, '')
                 questions_dict[current_question] = clean_answer
 
-        lenghtsss += 1
-        if lenghtsss == 1:
-            break
-
     return questions_dict
 
 
 def launch_redis():
-    env = Env()
-    env.read_env()
-
-    redis_host = env('REDIS_HOST', 'localhost')
-    redis_port = env.int('REDIS_PORT', 6379)
-    redis_password = env('REDIS_PASSWORD', None)
-    redis_db = env.int('REDIS_DB', 0)
-
     redis_client = redis.Redis(
-        host=redis_host,
-        port=redis_port,
-        password=redis_password,
-        db=redis_db,
+        host=config.redis_host,
+        port=config.redis_port,
+        password=config.redis_password,
+        db=config.redis_db,
         decode_responses=False
     )
 
     return redis_client
+

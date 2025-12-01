@@ -1,11 +1,13 @@
 import random
+from functools import partial
+
 import vk_api
 import telegram
 
+from config import config
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.longpoll import VkLongPoll, VkEventType
-from environs import Env
-from utils import get_quiz, setup_logging, launch_redis
+from utils import parse_quiz_questions, setup_logging, launch_redis
 
 
 class UserState:
@@ -44,8 +46,7 @@ def handle_start(vk, user_id, redis_db, keyboard):
     return UserState.NEW_QUESTION
 
 
-def handle_new_question(vk, user_id, redis_db, keyboard):
-    quiz = get_quiz()
+def handle_new_question(vk, user_id, redis_db, keyboard, quiz):
     question = random.choice(list(quiz.keys()))
     answer = quiz[question]
 
@@ -74,7 +75,7 @@ def handle_solution_attempt(vk, user_id, user_message, redis_db, keyboard):
         return UserState.ANSWERING
 
 
-def handle_surrender(vk, user_id, redis_db, keyboard):
+def handle_surrender(vk, user_id, redis_db, keyboard, quiz):
     answer = redis_db.get(f'user:{user_id}:answer')
     if not answer:
         send_message(vk, user_id, 'Нет активного вопроса', keyboard)
@@ -87,7 +88,7 @@ def handle_surrender(vk, user_id, redis_db, keyboard):
     redis_db.delete(f'user:{user_id}:question')
     redis_db.delete(f'user:{user_id}:answer')
 
-    return handle_new_question(vk, user_id, redis_db, keyboard)
+    return handle_new_question(vk, user_id, redis_db, keyboard, quiz)
 
 
 def handle_score(vk, user_id, redis_db, keyboard):
@@ -108,12 +109,9 @@ def handle_score(vk, user_id, redis_db, keyboard):
 
 
 def main():
-    env = Env()
-    env.read_env()
-
-    vk_token = env('VK_TOKEN')
-    telegram_chat_id = env('TELEGRAM_CHAT_ID')
-    telegram_bot_token = env('TELEGRAM_BOT_TOKEN')
+    vk_token = config.vk_token
+    telegram_chat_id = config.telegram_chat_id
+    telegram_bot_token = config.telegram_bot_token
 
     tg_bot = telegram.Bot(token=telegram_bot_token)
 
@@ -122,6 +120,7 @@ def main():
     longpoll = VkLongPoll(vk_session)
 
     redis_db = launch_redis()
+    quiz = parse_quiz_questions()
 
     logger_name = 'vk_quiz_bot'
     logger = setup_logging(logger_name, tg_bot, telegram_chat_id)
@@ -131,35 +130,37 @@ def main():
     try:
         logger.info('VK бот запущен')
 
+        command_handlers = {
+            'Начать': handle_start,
+            '/start': handle_start,
+            'Новый вопрос': partial(handle_new_question, quiz=quiz),
+            'Сдаться': partial(handle_surrender, quiz=quiz),
+            'Мой счёт': handle_score,
+        }
+
         for event in longpoll.listen():
-            if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                user_id = event.user_id
-                user_message = event.text
+            if not (event.type == VkEventType.MESSAGE_NEW and event.to_me):
+                continue
 
-                current_state = redis_db.get(f'user:{user_id}:state')
-                if current_state:
-                    current_state = current_state.decode('utf-8')
-                else:
-                    current_state = UserState.NEW_QUESTION
-                    redis_db.set(f'user:{user_id}:state', UserState.NEW_QUESTION)
+            user_id = event.user_id
+            user_message = event.text
 
-                if user_message == 'Начать' or user_message == '/start':
-                    current_state = handle_start(vk, user_id, redis_db, keyboard)
+            state_key = f'user:{user_id}:state'
+            current_state = redis_db.get(state_key)
+            current_state = current_state.decode('utf-8') if current_state else UserState.NEW_QUESTION
+            if not current_state:
+                redis_db.set(state_key, UserState.NEW_QUESTION)
 
-                elif user_message == 'Новый вопрос':
-                    current_state = handle_new_question(vk, user_id, redis_db, keyboard)
+            handler = command_handlers.get(user_message)
+            if handler:
+                handler(vk, user_id, redis_db, keyboard)
+                continue
 
-                elif user_message == 'Сдаться':
-                    current_state = handle_surrender(vk, user_id, redis_db, keyboard)
+            if current_state == UserState.ANSWERING:
+                handle_solution_attempt(vk, user_id, user_message, redis_db, keyboard)
+                continue
 
-                elif user_message == 'Мой счёт':
-                    current_state = handle_score(vk, user_id, redis_db, keyboard)
-
-                elif current_state == UserState.ANSWERING:
-                    current_state = handle_solution_attempt(vk, user_id, user_message, redis_db, keyboard)
-
-                elif current_state == UserState.NEW_QUESTION:
-                    send_message(vk, user_id, 'Нажмите «Новый вопрос» чтобы начать викторину', keyboard)
+            send_message(vk, user_id, 'Нажмите «Новый вопрос» чтобы начать викторину', keyboard)
 
     except Exception as e:
         logger.error(f'Бот упал с ошибкой: {e}', exc_info=True)

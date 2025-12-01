@@ -1,7 +1,7 @@
 import random
 
-from environs import Env
-from utils import get_quiz, setup_logging, launch_redis
+from config import config
+from utils import parse_quiz_questions, setup_logging, launch_redis
 from enum import Enum, auto
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
 from telegram import ReplyKeyboardMarkup
@@ -61,7 +61,7 @@ def handle_text_in_new_question_state(update, context):
 
 def handle_new_question_request(update, context):
     user_id = update.message.from_user.id
-    quiz = get_quiz()
+    quiz = context.bot_data['quiz']
 
     question = random.choice(list(quiz.keys()))
     answer = quiz[question]
@@ -134,16 +134,14 @@ def handle_score(update, context):
 
 
 def main():
-    env = Env()
-    env.read_env()
-
-    telegram_bot_token = env('TELEGRAM_BOT_TOKEN')
-    telegram_chat_id = env('TELEGRAM_CHAT_ID')
+    telegram_chat_id = config.telegram_chat_id
+    telegram_bot_token = config.telegram_bot_token
 
     updater = Updater(telegram_bot_token)
     dp = updater.dispatcher
 
     dp.bot_data['redis_db'] = launch_redis()
+    dp.bot_data['quiz'] = parse_quiz_questions()
 
     logger_name = 'tg_echo_bot'
     logger = setup_logging(logger_name, updater.bot, telegram_chat_id)
