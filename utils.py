@@ -3,8 +3,6 @@ import re
 import redis
 import logging
 
-from config import config
-
 
 class TelegramLogsHandler(logging.Handler):
     def __init__(self, tg_bot, chat_id):
@@ -33,8 +31,8 @@ def setup_logging(logger_name, tg_bot=None, chat_id=None):
     return logger
 
 
-def parse_quiz_questions():
-    folder_path = config.path_quiz_question
+def parse_quiz_questions(path_quiz_question):
+    folder_path = path_quiz_question
     all_files = os.listdir(folder_path)
     questions_dict = {}
 
@@ -61,12 +59,12 @@ def parse_quiz_questions():
     return questions_dict
 
 
-def launch_redis():
+def launch_redis(redis_host, redis_port, redis_password, redis_db):
     redis_client = redis.Redis(
-        host=config.redis_host,
-        port=config.redis_port,
-        password=config.redis_password,
-        db=config.redis_db,
+        host=redis_host,
+        port=redis_port,
+        password=redis_password,
+        db=redis_db,
         decode_responses=False
     )
 

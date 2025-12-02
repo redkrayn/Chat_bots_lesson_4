@@ -1,6 +1,6 @@
 import random
 
-from config import config
+from environs import Env
 from utils import parse_quiz_questions, setup_logging, launch_redis
 from enum import Enum, auto
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
@@ -134,14 +134,24 @@ def handle_score(update, context):
 
 
 def main():
-    telegram_chat_id = config.telegram_chat_id
-    telegram_bot_token = config.telegram_bot_token
+    env = Env()
+    env.read_env()
+
+    redis_host = env('REDIS_HOST', 'localhost')
+    redis_port = env.int('REDIS_PORT', 6379)
+    redis_password = env('REDIS_PASSWORD', None)
+    redis_db = env.int('REDIS_DB', 0)
+
+    telegram_bot_token = env('TELEGRAM_BOT_TOKEN')
+    telegram_chat_id = env.int('TELEGRAM_CHAT_ID')
+
+    path_quiz_question = env('PATH_QUIZ_QUESTIONS')
 
     updater = Updater(telegram_bot_token)
     dp = updater.dispatcher
 
-    dp.bot_data['redis_db'] = launch_redis()
-    dp.bot_data['quiz'] = parse_quiz_questions()
+    dp.bot_data['redis_db'] = launch_redis(redis_host, redis_port, redis_password, redis_db)
+    dp.bot_data['quiz'] = parse_quiz_questions(path_quiz_question)
 
     logger_name = 'tg_echo_bot'
     logger = setup_logging(logger_name, updater.bot, telegram_chat_id)
